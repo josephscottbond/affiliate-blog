@@ -220,10 +220,10 @@ export default function EditPostPage({ params }: PageProps) {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [uploadingFeatured, setUploadingFeatured] = useState(false);
 
+  const uploadFeaturedImage = async (file: File) => {
+    setUploadingFeatured(true);
     const formData = new FormData();
     formData.append("file", file);
 
@@ -239,7 +239,27 @@ export default function EditPostPage({ params }: PageProps) {
       }
     } catch (error) {
       console.error("Upload failed:", error);
+    } finally {
+      setUploadingFeatured(false);
     }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadFeaturedImage(file);
+  };
+
+  const handleFeaturedDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      await uploadFeaturedImage(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   if (loading) {
@@ -376,7 +396,15 @@ export default function EditPostPage({ params }: PageProps) {
                     </button>
                   </div>
                 ) : (
-                  <label className="block w-full p-4 border-2 border-dashed border-[var(--color-border)] rounded-lg text-center cursor-pointer hover:border-[var(--color-accent)] transition-colors">
+                  <label
+                    className={`block w-full p-4 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${
+                      uploadingFeatured
+                        ? "border-[var(--color-accent)] bg-blue-50"
+                        : "border-[var(--color-border)] hover:border-[var(--color-accent)]"
+                    }`}
+                    onDrop={handleFeaturedDrop}
+                    onDragOver={handleDragOver}
+                  >
                     <input
                       type="file"
                       accept="image/*"
@@ -384,7 +412,7 @@ export default function EditPostPage({ params }: PageProps) {
                       className="hidden"
                     />
                     <span className="text-sm text-[var(--color-text-muted)]">
-                      Click to upload
+                      {uploadingFeatured ? "Uploading..." : "Click or drag image here"}
                     </span>
                   </label>
                 )}
