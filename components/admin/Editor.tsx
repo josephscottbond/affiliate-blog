@@ -5,7 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 interface EditorProps {
   content: string;
@@ -13,6 +13,28 @@ interface EditorProps {
 }
 
 export default function Editor({ content, onChange }: EditorProps) {
+  const [uploading, setUploading] = useState(false);
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const { url } = await res.json();
+        return url;
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+    }
+    return null;
+  };
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -32,7 +54,7 @@ export default function Editor({ content, onChange }: EditorProps) {
         },
       }),
       Placeholder.configure({
-        placeholder: "Start writing your post...",
+        placeholder: "Start writing your post... (drag & drop images anywhere)",
       }),
     ],
     content,
@@ -42,6 +64,59 @@ export default function Editor({ content, onChange }: EditorProps) {
     editorProps: {
       attributes: {
         class: "prose max-w-none focus:outline-none min-h-[400px]",
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (!moved && event.dataTransfer?.files?.length) {
+          const file = event.dataTransfer.files[0];
+          if (file.type.startsWith("image/")) {
+            event.preventDefault();
+
+            setUploading(true);
+            uploadImage(file).then((url) => {
+              setUploading(false);
+              if (url) {
+                const { schema } = view.state;
+                const coordinates = view.posAtCoords({
+                  left: event.clientX,
+                  top: event.clientY,
+                });
+                if (coordinates) {
+                  const node = schema.nodes.image.create({ src: url });
+                  const transaction = view.state.tr.insert(coordinates.pos, node);
+                  view.dispatch(transaction);
+                }
+              }
+            });
+
+            return true;
+          }
+        }
+        return false;
+      },
+      handlePaste: (view, event) => {
+        const items = event.clipboardData?.items;
+        if (items) {
+          for (const item of items) {
+            if (item.type.startsWith("image/")) {
+              event.preventDefault();
+              const file = item.getAsFile();
+              if (file) {
+                setUploading(true);
+                uploadImage(file).then((url) => {
+                  setUploading(false);
+                  if (url) {
+                    const { schema } = view.state;
+                    const node = schema.nodes.image.create({ src: url });
+                    const transaction = view.state.tr.replaceSelectionWith(node);
+                    view.dispatch(transaction);
+                  }
+                });
+              }
+              return true;
+            }
+          }
+        }
+        return false;
       },
     },
   });
@@ -55,22 +130,12 @@ export default function Editor({ content, onChange }: EditorProps) {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file || !editor) return;
 
-      // Upload to server
-      const formData = new FormData();
-      formData.append("file", file);
+      setUploading(true);
+      const url = await uploadImage(file);
+      setUploading(false);
 
-      try {
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (res.ok) {
-          const { url } = await res.json();
-          editor.chain().focus().setImage({ src: url }).run();
-        }
-      } catch (error) {
-        console.error("Upload failed:", error);
+      if (url) {
+        editor.chain().focus().setImage({ src: url }).run();
       }
     };
 
@@ -169,8 +234,8 @@ export default function Editor({ content, onChange }: EditorProps) {
         <ToolbarButton onClick={setLink} active={editor.isActive("link")} title="Link">
           🔗
         </ToolbarButton>
-        <ToolbarButton onClick={addImage} title="Image">
-          🖼️
+        <ToolbarButton onClick={addImage} title="Image" disabled={uploading}>
+          {uploading ? "..." : "🖼️"}
         </ToolbarButton>
 
         <div className="w-px h-6 bg-[var(--color-border)] mx-1 self-center" />
@@ -182,6 +247,13 @@ export default function Editor({ content, onChange }: EditorProps) {
           —
         </ToolbarButton>
       </div>
+
+      {/* Upload indicator */}
+      {uploading && (
+        <div className="px-4 py-2 bg-blue-50 text-blue-700 text-sm">
+          Uploading image...
+        </div>
+      )}
 
       {/* Editor Content */}
       <div className="p-4">
@@ -196,21 +268,24 @@ function ToolbarButton({
   active,
   title,
   children,
+  disabled,
 }: {
   onClick: () => void;
   active?: boolean;
   title: string;
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
+      disabled={disabled}
       className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
         active
           ? "bg-[var(--color-accent)] text-white"
           : "hover:bg-[var(--color-border)]"
-      }`}
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       {children}
     </button>

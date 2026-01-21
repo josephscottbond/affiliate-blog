@@ -131,14 +131,93 @@ export default function EditPostPage({ params }: PageProps) {
   );
 
   const handlePublish = async () => {
-    setDraft(false);
-    // Wait for state update then save
-    setTimeout(() => handleSave(false), 0);
+    if (!title.trim()) {
+      alert("Please enter a title");
+      return;
+    }
+
+    setSaving(true);
+
+    const postData = {
+      title: title.trim(),
+      content,
+      description: description.trim(),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      featured_image: featuredImage.trim() || null,
+      draft: false,
+      slug: title
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, ""),
+    };
+
+    try {
+      let res;
+      if (currentPostId) {
+        res = await fetch(`/api/posts/${currentPostId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(postData),
+        });
+      } else {
+        res = await fetch("/api/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(postData),
+        });
+      }
+
+      if (res.ok) {
+        const savedPost = await res.json();
+        setCurrentPostId(savedPost.id);
+        setDraft(false);
+        setLastSaved(new Date());
+
+        // Update URL if this was a new post
+        if (!postId) {
+          router.replace(`/admin/edit/${savedPost.id}`);
+        }
+
+        // Trigger deploy after publish
+        await fetch("/api/deploy", { method: "POST" });
+        alert("Published and deploying! Your post will be live in about a minute.");
+      }
+    } catch (error) {
+      console.error("Publish failed:", error);
+      alert("Failed to publish");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUnpublish = async () => {
-    setDraft(true);
-    setTimeout(() => handleSave(false), 0);
+  const handleRevertToDraft = async () => {
+    setSaving(true);
+
+    try {
+      const res = await fetch(`/api/posts/${currentPostId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: true }),
+      });
+
+      if (res.ok) {
+        setDraft(true);
+        setLastSaved(new Date());
+
+        // Trigger deploy to remove from live site
+        await fetch("/api/deploy", { method: "POST" });
+        alert("Reverted to draft. The post will be removed from the live site in about a minute.");
+      }
+    } catch (error) {
+      console.error("Revert failed:", error);
+      alert("Failed to revert to draft");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,12 +278,12 @@ export default function EditPostPage({ params }: PageProps) {
             </button>
 
             {draft ? (
-              <button onClick={handlePublish} className="btn btn-primary">
-                Publish
+              <button onClick={handlePublish} disabled={saving} className="btn btn-primary">
+                {saving ? "Publishing..." : "Publish"}
               </button>
             ) : (
-              <button onClick={handleUnpublish} className="btn btn-outline">
-                Unpublish
+              <button onClick={handleRevertToDraft} disabled={saving} className="btn btn-outline">
+                Revert to Draft
               </button>
             )}
           </div>
