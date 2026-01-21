@@ -30,7 +30,7 @@
     0 4px 6px -4px rgba(0, 0, 0, 0.05);
 }
 
-/* Dark mode */
+/* Dark mode - disabled for now (light mode only)
 @media (prefers-color-scheme: dark) {
   :root {
     --color-bg: #0c0a09;
@@ -44,6 +44,7 @@
     --color-border-dark: #44403c;
   }
 }
+*/
 
 /* Tailwind v4 theme extension */
 @theme inline {
