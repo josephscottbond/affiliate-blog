@@ -220,6 +220,53 @@ export default function EditPostPage({ params }: PageProps) {
     }
   };
 
+  const handleUpdate = async () => {
+    if (!title.trim()) {
+      alert("Please enter a title");
+      return;
+    }
+
+    setSaving(true);
+
+    const postData = {
+      title: title.trim(),
+      content,
+      description: description.trim(),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      featured_image: featuredImage.trim() || null,
+      draft: false,
+      slug: title
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, ""),
+    };
+
+    try {
+      const res = await fetch(`/api/posts/${currentPostId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(postData),
+      });
+
+      if (res.ok) {
+        setLastSaved(new Date());
+
+        // Trigger deploy to update live site
+        await fetch("/api/deploy", { method: "POST" });
+        alert("Updated! Your changes will be live in about a minute.");
+      }
+    } catch (error) {
+      console.error("Update failed:", error);
+      alert("Failed to update");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const [uploadingFeatured, setUploadingFeatured] = useState(false);
 
   const uploadFeaturedImage = async (file: File) => {
@@ -302,9 +349,14 @@ export default function EditPostPage({ params }: PageProps) {
                 {saving ? "Publishing..." : "Publish"}
               </button>
             ) : (
-              <button onClick={handleRevertToDraft} disabled={saving} className="btn btn-outline">
-                Revert to Draft
-              </button>
+              <>
+                <button onClick={handleUpdate} disabled={saving} className="btn btn-primary">
+                  {saving ? "Updating..." : "Update"}
+                </button>
+                <button onClick={handleRevertToDraft} disabled={saving} className="btn btn-outline">
+                  Revert to Draft
+                </button>
+              </>
             )}
           </div>
         </div>
